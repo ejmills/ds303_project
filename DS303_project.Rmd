@@ -66,30 +66,15 @@ train_titanic <- train_titanic[,-c(1,9,11,12,13)]
 train_titanic$Survived <- as.factor(train_titanic$Survived)
 train_titanic$Pclass <- as.factor(train_titanic$Pclass)
 train_titanic %>% ggplot(aes(x=Sex, fill=Survived))+geom_bar()
+train_titanic %>% ggplot(aes(x=Pclass, fill = Survived))+geom_bar()
+train_titanic %>% ggplot(aes(x=SibSp, fill = Survived))+geom_bar()
 
 library(GGally)
-data(train_titanic, package = "reshape")
-ggpairs(train_titanic[,c(5,6,7,8)], fill = "Sex")
-
+install.packages('psych')
+library(psych)
+pairs.panels(train_titanic[,c(5,6,7,8)], density=TRUE, ellipses = TRUE)
 ```
 
-```{r}
-
-```
-
-Find missing values in training data
-```{r}
-#remove few columns like PassengerId, Cabin, Ticket and Embarked because is useless.
-train_titanic <- train_titanic[,-c(1,9,11,12)]
-
-#list rows of data that contains missing value
-train_titanic[!complete.cases(train_titanic),]
-#we see it contains lots of missing value(NA) in Age column.
-sum(is.na(train_titanic$Age))
-#
 
 
-
-
-```
 
