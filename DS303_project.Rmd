@@ -60,6 +60,10 @@ test_titanic <- titanic[titanic$IsTrainSet == FALSE,]
 sum(is.na(train_titanic)) #no missing value for train dataset
 str(train_titanic)
 
+write.csv(gender_sub, "gender_clean.csv", row.names = FALSE)
+write.csv(test_titanic, "test_clean.csv", row.names = FALSE)
+write.csv(train_titanic, "train_clean.csv", row.names = FALSE)
+
 library(ggplot2)
 library(dplyr)
 train_titanic <- train_titanic[,-c(1,9,11,12,13)]
@@ -90,6 +94,10 @@ sum(is.na(train_titanic$Age))
 
 
 
+
+```
+
+```{r, include=FALSE}
 
 ```
 
