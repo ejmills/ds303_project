@@ -2,7 +2,7 @@
 title: "Titanic_project"
 author: "Qinwen Yang"
 date: "11/15/2019"
-output: pdf_document
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
