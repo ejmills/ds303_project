@@ -1,6 +1,6 @@
 ---
 title: "Titanic_project"
-author: "Qinwen Yang"
+author: "Qinwen Yang, Austin Collins, Evan Mills"
 date: "11/15/2019"
 output: html_document
 ---
@@ -13,53 +13,82 @@ Ask Question:
 1. Male or Female, which sex have more survive in this disaster?
 2. Does the survival related to people's Pclass, Sibsp, or Parch?
 
+Read library:
+```{r}
+library(ggplot2)
+library(dplyr)
+library(GGally)
+library(psych)
+library(dummies)
+library(caTools)
+library(ElemStatLearn)
 
+```
+
+Step I: Read and clean dataset
 ```{r}
 #Read Data:
 gender_sub <- read.csv('gender_submission.csv', header = TRUE)
-gender_sub
+head(gender_sub)
 
 train_titanic <- read.csv('train.csv', header = TRUE, stringsAsFactors = FALSE)
 dim(train_titanic)
-
+head(train_titanic)
 test_titanic <- read.csv('test.csv', header = TRUE, stringsAsFactors = FALSE)
 dim(test_titanic)
+head(test_titanic)
 
 
 #Combine train and test dataset vertically to find missing value.
 
-##First: Create a new column in each dataset to recognise which is trainset, which testset.
+##First: Create a new column in each dataset to recognise which is trainset, which testset, TRUE means trainset, False means testset.
 train_titanic$IsTrainSet <- TRUE
 test_titanic$IsTrainSet <- FALSE
-##Since they have different number of columns for each two datasets
+##Since they have different number of columns for each two datasets.
 ncol(train_titanic)#13
 ncol(test_titanic)#12
 names(train_titanic)
 names(test_titanic)
-##We found there's one column missing in test dataset which is called Survived. Thus we need to create a column in test dataset named Survived and filled with NA.
-test_titanic$Survived <- NA
-##Combine:
+
+prop.table(table(train_titanic$Survived)) #61% people dead, 38% people survive
+##We found there's one column missing in test dataset which is called Survived. 
+##Thus we need to create a column in test dataset named Survived and filled with 0, 0 means we assume all people dead at the beginning, since it shown above that the probability of dead is higher than alive.
+test_titanic$Survived <- 0
+##Combine two dataset into one whole dataset named titanic:
 titanic <- rbind(train_titanic, test_titanic)
 head(titanic)
 tail(titanic)
+#Check number of trainset and testset in titanic dataset.
 table(titanic$IsTrainSet)
+#In titanic dataset, there are sum of 682 missing values.
 sum(is.na(titanic))
+#Check number of missing values in each column.
+colSums(is.na(titanic))
+#Check number of empty values in each column.
+colSums(titanic == '')
+##We can conclude that there are many NA values in Age column, and there are many empty values in Cabin column. 
+
+#Check Age column and try replace missing values to median for age column
 table(is.na(titanic$Age))
-#replace missing value for age column to median
 median.Age <- median(titanic$Age, na.rm = TRUE)
 titanic[is.na(titanic$Age), "Age"] <- median.Age
-table(is.na(titanic$Age)) #Non missing value in Age column
+table(is.na(titanic$Age)) #Now, there's no missing values in Age column
+#Check Fare column and try replace missing values to median for Fare column
 table(is.na(titanic$Fare))
 median.fare <- median(titanic$Fare, na.rm = TRUE)
 titanic[is.na(titanic$Fare), "Fare"] <- median.fare
-table(is.na(titanic$Embarked))
-titanic[!complete.cases(titanic), ]
-
+table(is.na(titanic$Fare)) #Now, there's no missing values in Fare column
+#Check Embarked column and try replace two missing values to "S" since most values in Embarked is "S"
+prop.table(table(titanic$Embarked))
+titanic[titanic$Embarked == '',"Embarked"] <- 'S'
+#Remove Cabin column since there are too many empty values in this column, thus we can't get any info from this column.
+titanic <- titanic %>% select(-c(Cabin))
+#After finish clean missing and empty values in dataset, we split the whole titanic dataset
+#into two again, which are train_titanic and test_titanic.
 train_titanic <- titanic[titanic$IsTrainSet == TRUE,]
 test_titanic <- titanic[titanic$IsTrainSet == FALSE,]
-sum(is.na(train_titanic)) #no missing value for train dataset
-str(train_titanic)
 
+<<<<<<< HEAD
 write.csv(gender_sub, "gender_clean.csv", row.names = FALSE)
 write.csv(test_titanic, "test_clean.csv", row.names = FALSE)
 write.csv(train_titanic, "train_clean.csv", row.names = FALSE)
@@ -74,30 +103,97 @@ train_titanic %>% ggplot(aes(x=Sex, fill=Survived))+geom_bar()
 library(GGally)
 data(train_titanic, package = "reshape")
 ggpairs(train_titanic[,c(5,6,7,8)], fill = "Sex")
+=======
+#We can see there's no missing value in train dataset now.
+sum(is.na(train_titanic))
+>>>>>>> c1870b760f5f38927038f6e54541f69f8dba6001
 
 ```
+
+Step II: Remove useless data columns in both datasets and plot barplots and scatter plot
+```{r}
+#Remove the useless column(unique classifier) from both datasets
+train_titanic2 <- train_titanic %>% select(-c(PassengerId, Name, Ticket, IsTrainSet))
+test_titanic2 <- test_titanic %>% select(-c(PassengerId, Name, Ticket, IsTrainSet))
+
+#Check number of unique values for each column to find out which columns are able to convert to factor type
+sapply(train_titanic2, function(x) length(unique(x)))
+#Change Survived, Pclass, Sex columns into factor type
+for (x in c("Survived", "Pclass", "Sex", "Embarked")) 
+{   
+  train_titanic2[,x] <- as.factor(train_titanic2[,x]) 
+  test_titanic2[,x] <- as.factor(test_titanic2[,x]) 
+  
+}
+#for (y in c("Pclass", "Sex"))
+#{
+  #test_titanic[,y] <- as.factor(test_titanic[,y]) 
+  
+#}
+str(train_titanic2) #Now, Survived, Pclass, Sex columns are factor type.
+str(test_titanic2)
+
+#Plot four barplots: Compare Sex and Survived, Pclass and Survived, SibSp and Survived, Parch and Survived.
+train_titanic2 %>% ggplot(aes(x=Sex, fill=Survived))+geom_bar()+ggtitle("Survival distribution base on Sex")
+train_titanic2 %>% ggplot(aes(x=Pclass, fill = Survived))+geom_bar()+ggtitle("Survival distribution base on Pclass")
+train_titanic2 %>% ggplot(aes(x=SibSp, fill = Survived))+geom_bar()+ggtitle("Survival distribution base on SibSp")
+train_titanic2 %>% ggplot(aes(x=Parch, fill = Survived))+geom_bar()+ggtitle("Survival distribution base on Parch")
+
+#Conclusion: 
+#This disaster is mentioned that it famous for saving "women and children first".
+#From four barplots, it shows compare to number of female, there are more male aboard to the titanic; however, most male are dead and most female are survived in this disaster. Upper level(represent Pclass = 1) have more survival. People in the titanic have more chances to survive if they are no or less siblings, parents or children aboard the titanic. 
+
+#Plot scatterplot
+pairs.panels(train_titanic2[,c(4,5,6,7)], density=TRUE, ellipses = TRUE)
+```
+
+Step III: Logistic Regression
+
+Split train_titanic dataset into two pieces, one is training(train_set), the other is testing(test_set), and use logistic regression for training(train_set) and to predict the testing(test_set), and see how well it is, then use logistic regression to predict real testing(test_titanic).
 
 ```{r}
+##We need create dummy variables in situation where we also need to use categorical(factor) variables in analytical methods that require numbers like logistic regression, KNN.
 
+#Create dummy variables for categorical variables for train datasets
+train_titanic2 <- dummy.data.frame(train_titanic2, names = c("Pclass", "Sex", "Embarked"), sep = "_")
+test_titanic2 <- dummy.data.frame(test_titanic2, names = c("Pclass", "Sex", "Embarked"), sep = "_")
+#Feature scaling
+train_titanic2[,-1] <- scale(train_titanic2[,-1])
+test_titanic2[,-1] <- scale(train_titanic2[,-1])
+#Spilt train dataset into two, one for train one for test
+set.seed(123)
+split <- sample.split(train_titanic2$Survived, SplitRatio = 0.12)
+train_set <- subset(train_titanic2, split == FALSE)#784 train set
+test_set <- subset(train_titanic2, split == TRUE)#107 test set
+
+#Fit logistic regression to train_set
+classifier = glm(formula = Survived ~ ., family = binomial(link = 'logit'), data = train_set )
+#Predict test dataset result
+prob_pred = predict(classifier, type = "response", newdata = test_set[,-1])
+prob_pred
+ypred = ifelse(prob_pred > 0.5, 1, 0)
+ypred
+#Make Confusion Matrix
+cm = table(test_set[,1], ypred)
+cm
+#From the confusion matrix, we are able to conclude that 60 and 25 are the correct prediction, and 8 and 15 are incorrect prediction. The classifier made 60+25 = 85 correct predictions and 16+6=22 incorrect predictions.
+
+#Use this classifier to test real test dataset
+prob_pred2 = predict(classifier, type = "response", newdata = test_titanic2[,-1])
+prob_pred2
+ypred2 = ifelse(prob_pred2 > 0.5, 1, 0)
+ypred2
+
+#Create a data frame for our prediction base on the id.
+Logistic.Predict <- data.frame(PassengerId = test_titanic$PassengerId, Survived = ypred2)
+head(Logistic.Predict, header = TRUE)
 ```
 
-Find missing values in training data
-```{r}
-#remove few columns like PassengerId, Cabin, Ticket and Embarked because is useless.
-train_titanic <- train_titanic[,-c(1,9,11,12)]
-
-#list rows of data that contains missing value
-train_titanic[!complete.cases(train_titanic),]
-#we see it contains lots of missing value(NA) in Age column.
-sum(is.na(train_titanic$Age))
-#
-
-
-
-
-```
-
+<<<<<<< HEAD
 ```{r, include=FALSE}
 
 ```
 
+=======
+Step iv: Decision Tree & Random Forrest
+>>>>>>> c1870b760f5f38927038f6e54541f69f8dba6001
