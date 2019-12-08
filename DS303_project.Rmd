@@ -1,17 +1,16 @@
 ---
 title: "Titanic_project"
-author: "Qinwen Yang, Austin Collins, Evan Mills"
+author: "Qinwen Yang"
 date: "11/15/2019"
-output: html_document
+output:
+  html_document:
+    df_print: paged
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Ask Question:
-1. Male or Female, which sex have more survive in this disaster?
-2. Does the survival related to people's Pclass, Sibsp, or Parch?
 
 Read library:
 ```{r}
@@ -22,49 +21,66 @@ library(psych)
 library(dummies)
 library(caTools)
 library(ElemStatLearn)
-
+library(rpart)
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+library(nnet)
+library(ROCR)
+library(caret)
 ```
 
 Step I: Read and clean dataset
 ```{r}
 #Read Data:
-gender_sub <- read.csv('gender_submission.csv', header = TRUE)
-head(gender_sub)
 
+#gender_sub dataset originally have 418 observations, 2 variables.
+gender_sub <- read.csv('gender_submission.csv', header = TRUE)
+dim(gender_sub)
+
+
+#train_titanic dataset originally have 891 observations, 12 variables.
 train_titanic <- read.csv('train.csv', header = TRUE, stringsAsFactors = FALSE)
 dim(train_titanic)
-head(train_titanic)
+
+
+#test_titanic dataset originally have 418 observations, 11 variables.
 test_titanic <- read.csv('test.csv', header = TRUE, stringsAsFactors = FALSE)
 dim(test_titanic)
-head(test_titanic)
 
 
-#Combine train and test dataset vertically to find missing value.
 
-##First: Create a new column in each dataset to recognise which is trainset, which testset, TRUE means trainset, False means testset.
+#Combine train_titanic and test_titanic datasets vertically into one dataset in order to clean data conveniently.
+
+#First: Create a new column in each dataset in order to recognise which is trainset, which is testset after, TRUE means trainset(train_titanic), False means testset(test_titanic).
 train_titanic$IsTrainSet <- TRUE
 test_titanic$IsTrainSet <- FALSE
-##Since they have different number of columns for each two datasets.
+
+#Two datasets have different number of columns.
 ncol(train_titanic)#13
 ncol(test_titanic)#12
+
+##By compare the name of two datasets, we found there is one variable missing in test dataset which is called Survived. 
 names(train_titanic)
 names(test_titanic)
 
-prop.table(table(train_titanic$Survived)) #61% people dead, 38% people survive
-##We found there's one column missing in test dataset which is called Survived. 
-##Thus we need to create a column in test dataset named Survived and filled with 0, 0 means we assume all people dead at the beginning, since it shown above that the probability of dead is higher than alive.
+prop.table(table(train_titanic$Survived)) #There's 61% people dead, 38% people survive in train_titanic dataset.
+
+
+##In order to combine two datasets, we need to create a new column in test dataset named Survived and since the probability above shows that people of dead is higher than survived, thus we filled all the value in this column to 0, 0 means we assume all people dead.
 test_titanic$Survived <- 0
-##Combine two dataset into one whole dataset named titanic:
-titanic <- rbind(train_titanic, test_titanic)
+
+##Combine two dataset into one dataset named titanic:
+titanic <- rbind(train_titanic, test_titanic) #total 1309 observations, 13 variables
 head(titanic)
-tail(titanic)
 #Check number of trainset and testset in titanic dataset.
-table(titanic$IsTrainSet)
-#In titanic dataset, there are sum of 682 missing values.
+table(titanic$IsTrainSet) 
+#In titanic dataset, there are sum of 264 missing values(NA), and 1016 empty values.
 sum(is.na(titanic))
-#Check number of missing values in each column.
+sum(titanic == '', na.rm = TRUE)
+#Check number of missing values in each column. Age: 263 missing values; Fare: 1 missing values
 colSums(is.na(titanic))
-#Check number of empty values in each column.
+#Check number of empty values in each column. Cabine: 1014 empty values; Embarked: 2 empty values
 colSums(titanic == '')
 ##We can conclude that there are many NA values in Age column, and there are many empty values in Cabin column. 
 
@@ -73,127 +89,197 @@ table(is.na(titanic$Age))
 median.Age <- median(titanic$Age, na.rm = TRUE)
 titanic[is.na(titanic$Age), "Age"] <- median.Age
 table(is.na(titanic$Age)) #Now, there's no missing values in Age column
+
 #Check Fare column and try replace missing values to median for Fare column
 table(is.na(titanic$Fare))
 median.fare <- median(titanic$Fare, na.rm = TRUE)
 titanic[is.na(titanic$Fare), "Fare"] <- median.fare
 table(is.na(titanic$Fare)) #Now, there's no missing values in Fare column
-#Check Embarked column and try replace two missing values to "S" since most values in Embarked is "S"
+
+#Check Embarked column and try replace two empty values to "S" since there is 70% possibility that values in Embarked is "S"
 prop.table(table(titanic$Embarked))
 titanic[titanic$Embarked == '',"Embarked"] <- 'S'
 #Remove Cabin column since there are too many empty values in this column, thus we can't get any info from this column.
 titanic <- titanic %>% select(-c(Cabin))
-#After finish clean missing and empty values in dataset, we split the whole titanic dataset
-#into two again, which are train_titanic and test_titanic.
-train_titanic <- titanic[titanic$IsTrainSet == TRUE,]
-test_titanic <- titanic[titanic$IsTrainSet == FALSE,]
 
-<<<<<<< HEAD
-write.csv(gender_sub, "gender_clean.csv", row.names = FALSE)
-write.csv(test_titanic, "test_clean.csv", row.names = FALSE)
-write.csv(train_titanic, "train_clean.csv", row.names = FALSE)
+#Remove the useless column(unique classifier) from titanic dataset
+titanic_complete <- titanic %>% select(-c(PassengerId, Name, Ticket))
 
-library(ggplot2)
-library(dplyr)
-train_titanic <- train_titanic[,-c(1,9,11,12,13)]
-train_titanic$Survived <- as.factor(train_titanic$Survived)
-train_titanic$Pclass <- as.factor(train_titanic$Pclass)
-train_titanic %>% ggplot(aes(x=Sex, fill=Survived))+geom_bar()
-
-library(GGally)
-data(train_titanic, package = "reshape")
-ggpairs(train_titanic[,c(5,6,7,8)], fill = "Sex")
-=======
-#We can see there's no missing value in train dataset now.
-sum(is.na(train_titanic))
->>>>>>> c1870b760f5f38927038f6e54541f69f8dba6001
-
-```
-
-Step II: Remove useless data columns in both datasets and plot barplots and scatter plot
-```{r}
-#Remove the useless column(unique classifier) from both datasets
-train_titanic2 <- train_titanic %>% select(-c(PassengerId, Name, Ticket, IsTrainSet))
-test_titanic2 <- test_titanic %>% select(-c(PassengerId, Name, Ticket, IsTrainSet))
 
 #Check number of unique values for each column to find out which columns are able to convert to factor type
-sapply(train_titanic2, function(x) length(unique(x)))
+sapply(titanic_complete, function(x) length(unique(x)))
 #Change Survived, Pclass, Sex columns into factor type
 for (x in c("Survived", "Pclass", "Sex", "Embarked")) 
 {   
-  train_titanic2[,x] <- as.factor(train_titanic2[,x]) 
-  test_titanic2[,x] <- as.factor(test_titanic2[,x]) 
+
+  titanic_complete[,x] <- as.factor(titanic_complete[,x])
   
 }
-#for (y in c("Pclass", "Sex"))
-#{
-  #test_titanic[,y] <- as.factor(test_titanic[,y]) 
-  
-#}
-str(train_titanic2) #Now, Survived, Pclass, Sex columns are factor type.
-str(test_titanic2)
+
+str(titanic_complete)#Survived, Pclass, Sex and Embarked columns are change to factor type in titanic_complete dataset
+
+#There's no missing and empty values in titanic_complete dataset.
+sum(is.na(titanic_complete))
+sum(titanic_complete == '')
+
+```
+
+Step II: plot barplots and scatter plot
+```{r}
+train_titanic1 <- titanic_complete[titanic_complete$IsTrainSet == TRUE,]
 
 #Plot four barplots: Compare Sex and Survived, Pclass and Survived, SibSp and Survived, Parch and Survived.
-train_titanic2 %>% ggplot(aes(x=Sex, fill=Survived))+geom_bar()+ggtitle("Survival distribution base on Sex")
-train_titanic2 %>% ggplot(aes(x=Pclass, fill = Survived))+geom_bar()+ggtitle("Survival distribution base on Pclass")
-train_titanic2 %>% ggplot(aes(x=SibSp, fill = Survived))+geom_bar()+ggtitle("Survival distribution base on SibSp")
-train_titanic2 %>% ggplot(aes(x=Parch, fill = Survived))+geom_bar()+ggtitle("Survival distribution base on Parch")
+train_titanic1 %>% ggplot(aes(x=Sex, fill=Survived))+geom_bar()+ggtitle("Survival distribution base on Sex")
+train_titanic1 %>% ggplot(aes(x=Pclass, fill = Survived))+geom_bar()+ggtitle("Survival distribution base on Pclass")
+train_titanic1 %>% ggplot(aes(x=SibSp, fill = Survived))+geom_bar()+ggtitle("Survival distribution base on SibSp")
+train_titanic1 %>% ggplot(aes(x=Parch, fill = Survived))+geom_bar()+ggtitle("Survival distribution base on Parch")
 
 #Conclusion: 
 #This disaster is mentioned that it famous for saving "women and children first".
 #From four barplots, it shows compare to number of female, there are more male aboard to the titanic; however, most male are dead and most female are survived in this disaster. Upper level(represent Pclass = 1) have more survival. People in the titanic have more chances to survive if they are no or less siblings, parents or children aboard the titanic. 
 
 #Plot scatterplot
-pairs.panels(train_titanic2[,c(4,5,6,7)], density=TRUE, ellipses = TRUE)
+pairs.panels(train_titanic1[,c(4,5,6,7)], density=TRUE, ellipses = TRUE)
+
+#Conclusion:
+#In the scatterplot, it shows most pair variables have low correlation, SibSp and Parch have more correlation compare to others. We can't get lots of useful information by just looking at the scatter plot
+
 ```
 
-Step III: Logistic Regression
 
-Split train_titanic dataset into two pieces, one is training(train_set), the other is testing(test_set), and use logistic regression for training(train_set) and to predict the testing(test_set), and see how well it is, then use logistic regression to predict real testing(test_titanic).
 
+Step II: Logistic Regression Model(I)
+
+We first split real clean train_titanic dataset into two pieces, one is training(train_set), the other is testing(test_set), and fit the model with training(train_set) and predict the testing(test_set) base on the model we fit, and see how well and accurate it is.
 ```{r}
+
 ##We need create dummy variables in situation where we also need to use categorical(factor) variables in analytical methods that require numbers like logistic regression, KNN.
 
-#Create dummy variables for categorical variables for train datasets
-train_titanic2 <- dummy.data.frame(train_titanic2, names = c("Pclass", "Sex", "Embarked"), sep = "_")
-test_titanic2 <- dummy.data.frame(test_titanic2, names = c("Pclass", "Sex", "Embarked"), sep = "_")
+#Create dummy variables for categorical variables for titanic datasets
+suppressWarnings({titanic_complete <- dummy.data.frame(titanic_complete, names = c("Pclass", "Sex", "Embarked"), sep = "_")})
+
+
 #Feature scaling
-train_titanic2[,-1] <- scale(train_titanic2[,-1])
-test_titanic2[,-1] <- scale(train_titanic2[,-1])
+titanic_complete[,-c(1,14)] <- scale(titanic_complete[,-c(1,14)])
+
+
+#Split the whole titanic dataset into two, which is train and test.
+train_titanic <- titanic_complete[titanic_complete$IsTrainSet == TRUE,]
+test_titanic <- titanic_complete[titanic_complete$IsTrainSet == FALSE,]
+
+#Remove IsTrainSet column, since we will not use this column after
+train_titanic <- train_titanic %>% select(-c(IsTrainSet))
+test_titanic <- test_titanic %>% select(-c(IsTrainSet))
+
 #Spilt train dataset into two, one for train one for test
 set.seed(123)
-split <- sample.split(train_titanic2$Survived, SplitRatio = 0.12)
-train_set <- subset(train_titanic2, split == FALSE)#784 train set
-test_set <- subset(train_titanic2, split == TRUE)#107 test set
+split <- sample.split(train_titanic$Survived, SplitRatio = 0.12)
+train_set <- subset(train_titanic, split == FALSE)#784 train set
+test_set <- subset(train_titanic, split == TRUE)#107 test set
 
 #Fit logistic regression to train_set
-classifier = glm(formula = Survived ~ ., family = binomial(link = 'logit'), data = train_set )
+#We use all remaining variables to predict the Survived.
+classifier = glm(formula = Survived ~ ., family = binomial(link = 'logit'), data = train_set)
+summary(classifier) #generate linear model
+
+#AIC is Akaike Information Criteria, with smaller AIC values indicate the model is closer to the truth. From this classifier, we found the AIC is 698.09.
+
+#Using anova to analysis the table of devaiance
+anova(classifier, test = "Chisq")
+#We can see the Pclass, Sex, Age and SibSp variables are significant for predict survived, and there p values are very small, smaller than 0.05. 
+
+
 #Predict test dataset result
-prob_pred = predict(classifier, type = "response", newdata = test_set[,-1])
-prob_pred
+suppressWarnings({prob_pred = predict(classifier, newdata = test_set[,-1], type = "response")})
 ypred = ifelse(prob_pred > 0.5, 1, 0)
-ypred
-#Make Confusion Matrix
+
+
+#Confusion Matrix: Assess the performance of the model
+#It's a better choice to evaluate the classification performance.
 cm = table(test_set[,1], ypred)
-cm
-#From the confusion matrix, we are able to conclude that 60 and 25 are the correct prediction, and 8 and 15 are incorrect prediction. The classifier made 60+25 = 85 correct predictions and 16+6=22 incorrect predictions.
+cm 
 
-#Use this classifier to test real test dataset
-prob_pred2 = predict(classifier, type = "response", newdata = test_titanic2[,-1])
-prob_pred2
+Accuracy = sum(diag(cm))/sum(cm)
+Accuracy #0.7943925
+
+Error = 1-Accuracy
+Error #0.2056075
+
+#From the confusion matrix, we are able to conclude that 60 and 25 are correct classification, and 6 and 16 are misclassification. The accuracy = 60+25/(60+6+16+25) = 85/107 = 0.794. The error = 22/107 = 0.206.
+
+#goodness of fit
+with(classifier, pchisq(null.deviance - deviance, df.null-df.residual, lower.tail = F))
+#Since P value is really small, our confidence level then will quite high that this model is statistically significant.
+
+#ROC Curve
+suppressWarnings({predict1 <- predict(classifier, newdata = test_set[,-1], type = "response")})
+ROCRpred <- prediction(predict1, test_set$Survived)
+ROCRperf <- performance(ROCRpred, measure = "tpr", x.measure = "fpr")
+plot(ROCRperf, colorize = TRUE, text.adj = c(-0.2,1.7), print.cutoffs.at = seq(0,1,0.1), main = "ROC Curve")
+abline(a=0, b=1)
+#We know that ROC curve is a performance measurement for classification problem at different thresholds. Higher AUC means better the model for predicting and distingusing between classes.
+
+#Area under curve
+auc =  performance(ROCRpred, "auc" )
+auc <- unlist(slot(auc, "y.values"))
+auc <- round(auc, 4)
+auc
+
+#Update the ROC plot with AUC area
+plot(ROCRperf, colorize = TRUE, text.adj = c(-0.2,1.7), print.cutoffs.at = seq(0,1,0.1), main = "ROC Curve")
+abline(a=0, b=1)
+legend(0.6, 0.3, auc, title = "AUC", cex = 1.2)
+
+#From the plot, it shows AUC = 0.7988 which is relatively close to 1. We have threshold = 0.5 which use black straight line to represent, and our ROC curve is definitely higher than this threshold, thus we have nearly 80% chance that our model will be able to distinguish between positive and negative class.
+```
+
+
+Step III: logistic regression(II)
+
+Fit the logistic regression model use whole train_titanic dataset, and test the gender_sub dataset base on the model we fit, and see how accurate it is.
+```{r}
+#We can use the gender_sub survived variable into our real test set. Remove the survived variable we create before which assuming all people dead and use the gender_sub survived variable.
+test_titanic2 <- test_titanic %>% select(-c(Survived))
+test_titanic2 <- cbind(test_titanic2, gender_sub)
+test_titanic2 <- test_titanic2 %>% select(-c(PassengerId))
+
+train_titanic2 <- train_titanic
+classifier2 = glm(formula = Survived ~ ., family = binomial(link = 'logit'), data = train_titanic2)
+summary(classifier2)
+#AIC in this model is 805.04, and this model AIC cannot compare with the first model AIC to find out which is close to the truth since the AIC depends on the sample size. These two model doesn't have same sample size and this model have larger sample size than the first model. The larger sample size is, the greater AIC becomes, thus it's reasonable that we get AIC equal 805.04.
+anova(classifier, test = "Chisq")
+#We still can see the Pclass, Sex, Age and SibSp variables are significant for predict survived, and there p values are also very small, smaller than 0.05. 
+
+suppressWarnings({prob_pred2 <- predict(classifier2, type = "response", newdata = test_titanic2[,-13])})
 ypred2 = ifelse(prob_pred2 > 0.5, 1, 0)
-ypred2
 
-#Create a data frame for our prediction base on the id.
-Logistic.Predict <- data.frame(PassengerId = test_titanic$PassengerId, Survived = ypred2)
-head(Logistic.Predict, header = TRUE)
+cm2 = confusionMatrix(factor(ypred2), factor(test_titanic2$Survived))
+cm2 
+#Confusion Matrix:
+#We change different function in R to find confusion matrix, this one are able to give more detailed. For total of 418 observations, we have 253+142 = 395 correct classification and 10+13 = 23 misclassification.
+
+#goodness of fit
+with(classifier2, pchisq(null.deviance - deviance, df.null-df.residual, lower.tail = F))
+#Since P value is really really small, our confidence level then will quite high that this model is statistically significant.
+
+#ROC Curve
+suppressWarnings({predict2 <- predict(classifier2, newdata = test_titanic2[,-13], type = "response")})
+ROCRpred2 <- prediction(predict2, test_titanic2$Survived)
+ROCRperf2 <- performance(ROCRpred2, measure = "tpr", x.measure = "fpr")
+plot(ROCRperf2, colorize = TRUE, text.adj = c(-0.2,1.7), print.cutoffs.at = seq(0,1,0.1), main = "ROC Curve")
+abline(a=0, b=1)
+
+#Area under curve
+auc2 =  performance(ROCRpred2, "auc" )
+auc2 <- unlist(slot(auc2, "y.values"))
+auc2 <- round(auc2, 4)
+auc2
+
+
+#Update the ROC plot with AUC area
+plot(ROCRperf2, colorize = TRUE, text.adj = c(-0.2,1.7), print.cutoffs.at = seq(0,1,0.1), main = "ROC Curve")
+abline(a=0, b=1)
+legend(0.6, 0.3, auc2, title = "AUC", cex = 1.2)
 ```
 
-<<<<<<< HEAD
-```{r, include=FALSE}
 
-```
-
-=======
-Step iv: Decision Tree & Random Forrest
->>>>>>> c1870b760f5f38927038f6e54541f69f8dba6001
